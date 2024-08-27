@@ -1,0 +1,160 @@
+// ==UserScript==
+// @name        Steam Market Toolbox
+// @namespace   Violentmonkey Scripts
+// @match       https://steamcommunity.com/market/*
+// @grant       unsafeWindow
+// @grant       GM.setValue
+// @grant       GM.getValue
+// @version     0.1
+// @author      Andrii Lavrenko
+// @description Useful UserScript tool for working with Steam Market
+
+// ==/UserScript==
+(function() {
+    'use strict';
+    // #region Constants
+    const MARKET_MAIN_PATH = '/market/';
+    const MARKET_SEARCH_PATH = '/market/search';
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const getRandom = (min, max) => Math.random() * (max - min) + min;
+    // #endregion
+
+    if (location.pathname === MARKET_SEARCH_PATH) {
+
+        const getSearchParams = () => {
+            let params = location.hash.match(/#p(?<page>\d*)_(?<sortColumn>.*)_(?<sortDir>.*)/)?.groups;
+            if (params) {
+                params.page = Number(params.page) - 1;
+                return params;
+            }
+
+            return {
+                page: 0,
+                sortColumn: 'popular',
+                sortDir: 'desc'
+            }
+        }
+
+        const getPriceOverview = async (appId, marketHashName) => {
+            const itemKey = `${appId}||${marketHashName}`;
+            const walletInfo = unsafeWindow.g_rgWalletInfo;
+
+            const loadCachedPriceOverview = async () => {
+                const _cachedData = await GM.getValue(itemKey);
+                if (!_cachedData) {
+                    return;
+                }
+
+                const cachedDate = new Date(_cachedData.cached_time);
+                const currentDate = new Date();
+
+                if (currentDate.getTime() - cachedDate.getTime() > 3600000) { // 1 hour is too old
+                    return;
+                }
+
+                return {
+                    lowest_price: _cachedData.lowest_price,
+                    success: _cachedData.success,
+                    volume: _cachedData.volume,
+                    median_price: _cachedData.median_price
+                }
+            }
+            const saveCachedPriceOverview = async priceOverview => {
+                const currentDate = new Date();
+                priceOverview.cached_time = currentDate.toJSON();
+
+                await GM.setValue(itemKey, priceOverview);
+            }
+            const doAjax = async url => {
+                let timeToDelay = 0;
+
+                while (true) {
+                    try {
+                        return await unsafeWindow.$J.ajax({
+                            url,
+                            method: 'GET'
+                        });
+                    } catch {
+                        timeToDelay += 1000;
+                        await delay(timeToDelay);
+                        continue;
+                    } finally {
+                        await delay(getRandom(2000, 4000));
+                    }
+                }
+            }
+
+            const _cachedData = await loadCachedPriceOverview();
+            if (_cachedData) {
+                return _cachedData;
+            }
+
+            const country = walletInfo.wallet_country;
+            const currency = walletInfo.wallet_currency;
+            const downloadedData = await doAjax(`https://steamcommunity.com/market/priceoverview/?country=${country}&currency=${currency}&appid=${appId}&market_hash_name=${marketHashName}`);
+
+            await saveCachedPriceOverview(downloadedData);
+            return downloadedData;
+        }
+
+        let renderVolumeBusy = false;
+        const renderQueue = [];
+        const renderVolume = async () => {
+            if (renderVolumeBusy) {
+                return;
+            }
+
+            renderVolumeBusy = true;
+            while (renderQueue.length) {
+                const {appId, marketHashName, volumeElement} = renderQueue.shift();
+                if (!volumeElement[0].isConnected) {
+                    continue;
+                }
+                const priceOverview = await getPriceOverview(appId, marketHashName);
+                volumeElement.text(priceOverview?.volume ?? '0');
+            }
+            renderVolumeBusy = false;
+        }
+
+        const $J = unsafeWindow.$J;
+        const g_oSearchResults = unsafeWindow.g_oSearchResults;
+
+        // region Market Search Monkeypatching
+        const _onResponseRenderResults = unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults;
+        unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults = function(transport) {
+            _onResponseRenderResults.call(this, transport);
+            const width = $J(
+                `<div class="market_listing_right_cell market_sortable_column" style="float:left;padding:0px 10px 0px 10px">
+                    VOLUME
+                </div>`)
+                .insertBefore('.market_listing_right_cell.market_listing_num_listings.market_sortable_column')
+                .outerWidth();
+
+            const listings = unsafeWindow.$J('.market_listing_row_link');
+            for (let i = 0; i < listings.length; ++i) {
+                const volumeElement = $J(`<div id="volume_${i}" class="market_listing_right_cell market_listing_num_listings" style="width: ${width}px">Processing...</div>`)
+                    .insertBefore(`#result_${i} .market_listing_price_listings_block .market_listing_right_cell.market_listing_num_listings`);
+
+                const url = new URL(listings[i].href);
+                const { appId, marketHashName } = url.pathname.match(/\/market\/listings\/(?<appId>\d+)\/(?<marketHashName>.*)/).groups;
+
+                renderQueue.push({
+                    appId,
+                    marketHashName,
+                    volumeElement
+                });
+            }
+
+            renderVolume();
+        }
+
+        g_oSearchResults.m_cPageSize = 100;
+
+        const params = getSearchParams();
+        g_oSearchResults.m_iCurrentPage = params.page - 1;
+        unsafeWindow.g_strSortColumn = params.sortColumn;
+        unsafeWindow.g_strSortDir = params.sortDir;
+        g_oSearchResults.GoToPage(params.page, true)
+        // endregion
+    }
+})();
