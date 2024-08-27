@@ -7,9 +7,10 @@
 // @grant       GM.getValue
 // @version     0.1
 // @author      Andrii Lavrenko
-// @description Useful UserScript tool for working with Steam Market
-
+// @description A set of utilities (or consider it as a single script) that enhances various components of the Steam Community Market
+// @downloadURL https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js
 // ==/UserScript==
+
 (function() {
     'use strict';
     // #region Constants
