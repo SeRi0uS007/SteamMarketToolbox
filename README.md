@@ -7,6 +7,7 @@ A set of utilities (or consider it as a single script) that enhances various com
 1. Install any **monkey* extension for your browser.
    - [Violentmonkey](https://violentmonkey.github.io/)
    - [Tampermonkey](https://www.tampermonkey.net/)
+
 2. Install [this](https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js) userscript.
 
 ## Features

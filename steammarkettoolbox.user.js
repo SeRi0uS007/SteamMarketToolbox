@@ -5,10 +5,11 @@
 // @grant       unsafeWindow
 // @grant       GM.setValue
 // @grant       GM.getValue
-// @version     0.1
+// @version     0.2
 // @author      Andrii Lavrenko
 // @description A set of utilities (or consider it as a single script) that enhances various components of the Steam Community Market
 // @downloadURL https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js
+// @updateURL   https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js
 // ==/UserScript==
 
 (function() {
@@ -156,6 +157,39 @@
         unsafeWindow.g_strSortColumn = params.sortColumn;
         unsafeWindow.g_strSortDir = params.sortDir;
         g_oSearchResults.GoToPage(params.page, true)
+        // endregion
+
+        // region Market Search Group
+        const appsSelector = $J('#market_advancedsearch_appselect_options .popup_item.popup_menu_item.market_advancedsearch_appname');
+
+        const appsData = [];
+        // First one is a <span> with text "All games"
+        for (let i = 1; i < appsSelector.length; ++i) {
+            const appId = Number($J(appsSelector[i]).attr('data-appid'));
+            const appName = $J('span', appsSelector[i]).text().strip();
+            const appIcon = $J('img', appsSelector[i]).attr('src');
+
+            appsData.push({
+                appId,
+                appName,
+                appIcon
+            });
+        }
+
+        $J('<div id="browseItems" class="responsive_local_menu"><div class=market_search_game_button_group></div></div>')
+            .insertAfter('.market_search_box_container');
+
+        for (let app of appsData) {
+            $J(`<a href="https://steamcommunity.com/market/search?appid=${app.appId}" class="game_button">
+                    <span class="game_button_contents">
+                        <span class="game_button_game_icon">
+                            <img src="${app.appIcon}" alt="${app.appName}">
+                            <span class="game_button_game_name"> ${app.appName} </span>
+                        </span>
+                    </span>
+                </a>`)
+                .appendTo('.market_search_game_button_group')
+        }
         // endregion
     }
 })();
