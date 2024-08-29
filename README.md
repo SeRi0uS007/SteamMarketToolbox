@@ -13,8 +13,8 @@ A set of utilities (or consider it as a single script) that enhances various com
 ## Features
 
 - Expanding the lots list on one page to 100 items;
-- Displaying the 24 hours volume on a lot row.
-- Displaying all marketable apps in right menu for */market/search*
+- Displaying the 24 hours volume on a lot row;
+- Displaying all marketable apps in right menu for */market/search*.
 
 > Warning. This is a beta release. Features are subject to change.
 

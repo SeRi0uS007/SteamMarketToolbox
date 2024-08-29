@@ -5,7 +5,7 @@
 // @grant       unsafeWindow
 // @grant       GM.setValue
 // @grant       GM.getValue
-// @version     0.2
+// @version     0.3
 // @author      Andrii Lavrenko
 // @description A set of utilities (or consider it as a single script) that enhances various components of the Steam Community Market
 // @downloadURL https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js
@@ -14,26 +14,34 @@
 
 (function() {
     'use strict';
-    // #region Constants
+
     const MARKET_MAIN_PATH = '/market/';
     const MARKET_SEARCH_PATH = '/market/search';
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const getRandom = (min, max) => Math.random() * (max - min) + min;
-    // #endregion
 
-    if (location.pathname === MARKET_SEARCH_PATH) {
 
-        const getSearchParams = () => {
-            let params = location.hash.match(/#p(?<page>\d*)_(?<sortColumn>.*)_(?<sortDir>.*)/)?.groups;
-            if (params) {
-                params.page = Number(params.page) - 1;
-                return params;
-            }
+    if ([MARKET_MAIN_PATH, MARKET_SEARCH_PATH].includes(location.pathname)) {
+        const $J = unsafeWindow.$J;
+        const g_oSearchResults = unsafeWindow.g_oSearchResults;
+        const renderVolumeHeaders = () => {
+            const width = $J('<div class="market_listing_right_cell market_sortable_column" style="float:left;padding:0px 10px 0px 10px">VOLUME</div>')
+                .insertBefore('.market_listing_table_header .market_listing_num_listings.market_listing_right_cell')
+                .outerWidth();
 
-            return {
-                page: 0,
-                sortColumn: 'popular',
-                sortDir: 'desc'
+            const listings = $J('.market_listing_row_link');
+            for (let i = 0; i < listings.length; ++i) {
+                const volumeElement = $J(`<div id="volume_${i}" class="market_listing_right_cell market_listing_num_listings" style="width: ${width}px">Processing...</div>`)
+                    .insertBefore(`#result_${i} .market_listing_price_listings_block .market_listing_right_cell.market_listing_num_listings`);
+
+                const url = new URL(listings[i].href);
+                const { appId, marketHashName } = url.pathname.match(/\/market\/listings\/(?<appId>\d+)\/(?<marketHashName>.*)/).groups;
+
+                renderQueue.push({
+                    appId,
+                    marketHashName,
+                    volumeElement
+                });
             }
         }
 
@@ -72,7 +80,7 @@
 
                 while (true) {
                     try {
-                        return await unsafeWindow.$J.ajax({
+                        return await $J.ajax({
                             url,
                             method: 'GET'
                         });
@@ -118,78 +126,73 @@
             renderVolumeBusy = false;
         }
 
-        const $J = unsafeWindow.$J;
-        const g_oSearchResults = unsafeWindow.g_oSearchResults;
-
-        // region Market Search Monkeypatching
-        const _onResponseRenderResults = unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults;
-        unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults = function(transport) {
-            _onResponseRenderResults.call(this, transport);
-            const width = $J(
-                `<div class="market_listing_right_cell market_sortable_column" style="float:left;padding:0px 10px 0px 10px">
-                    VOLUME
-                </div>`)
-                .insertBefore('.market_listing_right_cell.market_listing_num_listings.market_sortable_column')
-                .outerWidth();
-
-            const listings = unsafeWindow.$J('.market_listing_row_link');
-            for (let i = 0; i < listings.length; ++i) {
-                const volumeElement = $J(`<div id="volume_${i}" class="market_listing_right_cell market_listing_num_listings" style="width: ${width}px">Processing...</div>`)
-                    .insertBefore(`#result_${i} .market_listing_price_listings_block .market_listing_right_cell.market_listing_num_listings`);
-
-                const url = new URL(listings[i].href);
-                const { appId, marketHashName } = url.pathname.match(/\/market\/listings\/(?<appId>\d+)\/(?<marketHashName>.*)/).groups;
-
-                renderQueue.push({
-                    appId,
-                    marketHashName,
-                    volumeElement
-                });
-            }
-
+        if (location.pathname === MARKET_MAIN_PATH) {
+            unsafeWindow.ShowAllGames();
+            renderVolumeHeaders();
             renderVolume();
         }
 
-        g_oSearchResults.m_cPageSize = 100;
+        if (location.pathname === MARKET_SEARCH_PATH) {
+            const getSearchParams = () => {
+                let params = location.hash.match(/#p(?<page>\d*)_(?<sortColumn>.*)_(?<sortDir>.*)/)?.groups;
+                if (params) {
+                    params.page = Number(params.page) - 1;
+                    return params;
+                }
 
-        const params = getSearchParams();
-        g_oSearchResults.m_iCurrentPage = params.page - 1;
-        unsafeWindow.g_strSortColumn = params.sortColumn;
-        unsafeWindow.g_strSortDir = params.sortDir;
-        g_oSearchResults.GoToPage(params.page, true)
-        // endregion
+                return {
+                    page: 0,
+                    sortColumn: 'popular',
+                    sortDir: 'desc'
+                }
+            }
 
-        // region Market Search Group
-        const appsSelector = $J('#market_advancedsearch_appselect_options .popup_item.popup_menu_item.market_advancedsearch_appname');
+            const _onResponseRenderResults = unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults;
+            unsafeWindow.CAjaxPagingControls.prototype.OnResponseRenderResults = function(transport) {
+                _onResponseRenderResults.call(this, transport);
+                renderVolumeHeaders();
+                renderVolume();
+            }
 
-        const appsData = [];
-        // First one is a <span> with text "All games"
-        for (let i = 1; i < appsSelector.length; ++i) {
-            const appId = Number($J(appsSelector[i]).attr('data-appid'));
-            const appName = $J('span', appsSelector[i]).text().strip();
-            const appIcon = $J('img', appsSelector[i]).attr('src');
+            g_oSearchResults.m_cPageSize = 100;
 
-            appsData.push({
-                appId,
-                appName,
-                appIcon
-            });
-        }
+            const params = getSearchParams();
+            g_oSearchResults.m_iCurrentPage = params.page - 1;
+            unsafeWindow.g_strSortColumn = params.sortColumn;
+            unsafeWindow.g_strSortDir = params.sortDir;
+            g_oSearchResults.GoToPage(params.page, true)
 
-        $J('<div id="browseItems" class="responsive_local_menu"><div class=market_search_game_button_group></div></div>')
-            .insertAfter('.market_search_box_container');
+            const appsSelector = $J('#market_advancedsearch_appselect_options .popup_item.popup_menu_item.market_advancedsearch_appname');
 
-        for (let app of appsData) {
-            $J(`<a href="https://steamcommunity.com/market/search?appid=${app.appId}" class="game_button">
-                    <span class="game_button_contents">
-                        <span class="game_button_game_icon">
-                            <img src="${app.appIcon}" alt="${app.appName}">
-                            <span class="game_button_game_name"> ${app.appName} </span>
+            // Render apps buttons
+            const appsData = [];
+            // First one is a <span> with text "All games"
+            for (let i = 1; i < appsSelector.length; ++i) {
+                const appId = Number($J(appsSelector[i]).attr('data-appid'));
+                const appName = $J('span', appsSelector[i]).text().strip();
+                const appIcon = $J('img', appsSelector[i]).attr('src');
+
+                appsData.push({
+                    appId,
+                    appName,
+                    appIcon
+                });
+            }
+
+            $J('<div id="browseItems" class="responsive_local_menu"><div class=market_search_game_button_group></div></div>')
+                .insertAfter('.market_search_box_container');
+
+            for (let app of appsData) {
+                $J(`<a href="https://steamcommunity.com/market/search?appid=${app.appId}" class="game_button">
+                        <span class="game_button_contents">
+                            <span class="game_button_game_icon">
+                                <img src="${app.appIcon}" alt="${app.appName}">
+                                <span class="game_button_game_name"> ${app.appName} </span>
+                            </span>
                         </span>
-                    </span>
-                </a>`)
-                .appendTo('.market_search_game_button_group')
+                    </a>`)
+                    .appendTo('.market_search_game_button_group')
+            }
         }
-        // endregion
     }
 })();
