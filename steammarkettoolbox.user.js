@@ -5,7 +5,8 @@
 // @grant       unsafeWindow
 // @grant       GM.setValue
 // @grant       GM.getValue
-// @version     0.3
+// @grant       GM.addStyle
+// @version     0.4
 // @author      Andrii Lavrenko
 // @description A set of utilities (or consider it as a single script) that enhances various components of the Steam Community Market
 // @downloadURL https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js
@@ -14,6 +15,75 @@
 
 (function() {
     'use strict';
+
+    GM.addStyle(`
+        .lds-ellipsis,
+        .lds-ellipsis div {
+            box-sizing: border-box;
+        }
+        .lds-ellipsis {
+            display: inline-block;
+            position: relative;
+            height: 23px;
+        }
+        .lds-ellipsis div {
+            position: absolute;
+            top: 16.66666px;
+            width: 6.66666px;
+            height: 6.66666px;
+            border-radius: 50%;
+            background: currentColor;
+            animation-timing-function: cubic-bezier(0, 1, 1, 0);
+            }
+        .lds-ellipsis div:nth-child(1) {
+            left: 4px;
+            animation: lds-ellipsis1 0.6s infinite;
+        }
+        .lds-ellipsis div:nth-child(2) {
+            left: 4px;
+            animation: lds-ellipsis2 0.6s infinite;
+        }
+        .lds-ellipsis div:nth-child(3) {
+            left: 16px;
+            animation: lds-ellipsis2 0.6s infinite;
+        }
+        .lds-ellipsis div:nth-child(4) {
+            left: 26px;
+            animation: lds-ellipsis3 0.6s infinite;
+        }
+        @keyframes lds-ellipsis1 {
+            0% {
+                transform: scale(0);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+        @keyframes lds-ellipsis3 {
+            0% {
+                transform: scale(1);
+            }
+            100% {
+                transform: scale(0);
+            }
+        }
+        @keyframes lds-ellipsis2 {
+            0% {
+                transform: translate(0, 0);
+            }
+            100% {
+                transform: translate(12px, 0);
+            }
+        }
+        .smt_game_button_game_price {
+            float: right;
+            background-color: #555555;
+            border-top-left-radius: 5px;
+            border-bottom-left-radius: 5px;
+            padding-left: 5px;
+            min-width: 40px;
+        }
+    `);
 
     const MARKET_MAIN_PATH = '/market/';
     const MARKET_SEARCH_PATH = '/market/search';
@@ -24,6 +94,10 @@
     if ([MARKET_MAIN_PATH, MARKET_SEARCH_PATH].includes(location.pathname)) {
         const $J = unsafeWindow.$J;
         const g_oSearchResults = unsafeWindow.g_oSearchResults;
+        const walletInfo = unsafeWindow.g_rgWalletInfo;
+        const v_currencyformat = unsafeWindow.v_currencyformat;
+        const GetCurrencyCode = unsafeWindow.GetCurrencyCode;
+
         const renderVolumeHeaders = () => {
             const width = $J('<div class="market_listing_right_cell market_sortable_column" style="float:left;padding:0px 10px 0px 10px">VOLUME</div>')
                 .insertBefore('.market_listing_table_header .market_listing_num_listings.market_listing_right_cell')
@@ -31,7 +105,7 @@
 
             const listings = $J('.market_listing_row_link');
             for (let i = 0; i < listings.length; ++i) {
-                const volumeElement = $J(`<div id="volume_${i}" class="market_listing_right_cell market_listing_num_listings" style="width: ${width}px">Processing...</div>`)
+                const volumeElement = $J(`<div class="market_listing_right_cell market_listing_num_listings" style="width: ${width}px">Processing...</div>`)
                     .insertBefore(`#result_${i} .market_listing_price_listings_block .market_listing_right_cell.market_listing_num_listings`);
 
                 const url = new URL(listings[i].href);
@@ -46,8 +120,7 @@
         }
 
         const getPriceOverview = async (appId, marketHashName) => {
-            const itemKey = `${appId}||${marketHashName}`;
-            const walletInfo = unsafeWindow.g_rgWalletInfo;
+            const itemKey = `marketPrice||${appId}||${marketHashName}`;
 
             const loadCachedPriceOverview = async () => {
                 const _cachedData = await GM.getValue(itemKey);
@@ -126,8 +199,127 @@
             renderVolumeBusy = false;
         }
 
+        const renderAppPrices = async () => {
+            const getNextStoreUpdateDate = () => {
+                const currentDate = new Date();
+                let day = currentDate.getUTCDate();
+                if (currentDate.getUTCHours >= 17) {
+                    ++day;
+                }
+                return Date.UTC(
+                    currentDate.getUTCFullYear(),
+                    currentDate.getUTCMonth,
+                    day,
+                    17,
+                    0,
+                    0,
+                    0
+                );
+            }
+
+            $J('.game_button_contents').css('display', 'flex');
+            $J('.game_button_game_name').css('flex-grow', '1');
+
+            const spinner = $J(`<span style="padding-left: 45%">
+                    <div class="lds-ellipsis">
+                        <div>
+                        </div>
+                        <div>
+                        </div>
+                        <div>
+                        </div>
+                        <div>
+                        </div>
+                    </div>
+                </span>`);
+
+            spinner.insertAfter('#browseItems .market_search_sidebar_section_tip_small');
+
+            const appCards = $J('.game_button');
+            const checkedApps = [];
+            const unchekedApps = [];
+
+            for (let i = 0; i < appCards.length; ++i) {
+                const app = appCards[i];
+                // 47 is exact place where "=" symbol ends
+                const appId = Number(app.href.substring(47));
+                const appKey = `appPrice||${appId}`;
+                const _cachedData = await GM.getValue(appKey);
+                if (!_cachedData) {
+                    unchekedApps.push({
+                        appCard: appCards[i],
+                        appId
+                    });
+                    continue;
+                }
+
+                const cachedDate = new Date(_cachedData.cached_time);
+                if (cachedDate.getTime() <= getNextStoreUpdateDate()) {
+                    unchekedApps.push({
+                        appCard: appCards[i],
+                        appId
+                    });
+                    continue;
+                }
+
+                checkedApps.push({
+                    appCard: appCards[i],
+                    appId,
+                    price: _cachedData.price
+                });
+            }
+
+            if (unchekedApps.length > 0) {
+                let appIds = '';
+                unchekedApps.forEach((value, index) => {
+                    if (index == 0) appIds = String(value.appId);
+                    appIds += `,${value.appId}`;
+                });
+                const pricesResult = await $J.ajax({
+                    method: 'GET',
+                    url: `https://store.steampowered.com/api/appdetails?appids=${appIds}&cc=${walletInfo.wallet_country}&filters=price_overview`
+                })
+                while (unchekedApps.length > 0) {
+                    const card = unchekedApps.pop();
+                    const appId = card.appId;
+                    const appKey = `appPrice||${appId}`;
+
+                    const data = {
+                        price: -1,
+                        cached_time: (new Date()).toJSON()
+                    }
+                    const result = pricesResult[appId];
+                    if (result.success) {
+                        data.price = result?.data?.price_overview?.final ?? 0;
+                    }
+                    await GM.setValue(appKey, data);
+
+                    card.price = data.price;
+                    checkedApps.push(card);
+                }
+            }
+
+            for (const app of checkedApps) {
+                const currencyCode = GetCurrencyCode(walletInfo.wallet_currency);
+                let priceString;
+                if (app.price == -1) {
+                    priceString = `<del>${v_currencyformat(0, currencyCode)}</del>`
+                } else {
+                    priceString = `${v_currencyformat(app.price, currencyCode)}`
+                }
+
+                $J('.game_button_contents', $J(app.appCard))
+                .append(`<span class="smt_game_button_game_price">${priceString}</span>`);
+            }
+
+            spinner.remove();
+        }
+
         if (location.pathname === MARKET_MAIN_PATH) {
+            // There are hidden games
+            $J('.market_unvetted_games .game_button').appendTo('.market_more_games');
             unsafeWindow.ShowAllGames();
+
             renderVolumeHeaders();
             renderVolume();
         }
@@ -187,12 +379,14 @@
                         <span class="game_button_contents">
                             <span class="game_button_game_icon">
                                 <img src="${app.appIcon}" alt="${app.appName}">
-                                <span class="game_button_game_name"> ${app.appName} </span>
                             </span>
+                            <span class="game_button_game_name"> ${app.appName} </span>
                         </span>
                     </a>`)
                     .appendTo('.market_search_game_button_group')
             }
         }
+
+        renderAppPrices();
     }
 })();
