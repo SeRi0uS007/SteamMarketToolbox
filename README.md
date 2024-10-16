@@ -7,6 +7,7 @@ A set of utilities (or consider it as a single script) that enhances various com
 1. Install any **monkey* extension for your browser.
    - [Violentmonkey](https://violentmonkey.github.io/)
    - [Tampermonkey](https://www.tampermonkey.net/)
+   - [Greasemonkey](https://www.greasespot.net/)
 
 2. Install [this](https://github.com/SeRi0uS007/SteamMarketToolbox/raw/master/steammarkettoolbox.user.js) userscript.
 
@@ -14,7 +15,8 @@ A set of utilities (or consider it as a single script) that enhances various com
 
 - Expanding the lots list on one page to 100 items;
 - Displaying the 24 hours volume on a lot row;
-- Displaying all marketable apps in right menu for */market/search*.
+- Displaying all marketable apps in right menu for */market/search*;
+- Displaying prices and online statuses and filter them.
 
 > Warning. This is a beta release. Features are subject to change.
 
