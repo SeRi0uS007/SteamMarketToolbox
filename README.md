@@ -1,3 +1,7 @@
+# Notice
+
+This repository is archived. The changes to the new version are enough to make it easier and more convenient for me to develop a browser extension
+
 # Steam Market Toolbox
 
 A set of utilities (or consider it as a single script) that enhances various components of the Steam Community Market
